@@ -64,7 +64,7 @@ public class RobustZooKeeper {
   }
 
   public RobustZooKeeper(String ensembleAddresses) throws IOException {
-    this.reconnectCount = new AtomicInteger(-1); // start at -1, so that the
+    this.reconnectCount = new AtomicInteger(-1); // start at -1 so that the initial connection doesn't count
     this.shutdown = new AtomicBoolean(false);
     this.reconnectLock = new ReentrantLock();
     this.ensembleAddress = ensembleAddresses;
@@ -73,6 +73,15 @@ public class RobustZooKeeper {
 
   private static boolean isAlive(ZooKeeper zk) {
     return zk != null && zk.getState().isAlive();
+  }
+
+  /**
+   * Get the number of times the underlying zookeeper connection has had to be reconnected.
+   * Useful for monitoring/etc
+   * @return The number of reconnections that have successfully completed.
+   */
+  public int getReconnectionCount() {
+    return reconnectCount.get();
   }
 
   public void shutdown() throws InterruptedException {
@@ -97,6 +106,7 @@ public class RobustZooKeeper {
         res = client;
         if (!isAlive(res)) {
           res = new ZooKeeper(ensembleAddress, Integer.MAX_VALUE, new ConnectionWatcher());
+          reconnectCount.incrementAndGet();
           client = res;
         }
       } finally {
@@ -119,6 +129,7 @@ public class RobustZooKeeper {
 
   /**
    * Execute the given Runnable once we obtain the zookeeper lock with the given name.
+   * Automatically release the lock once the Runnable completes.
    * <p/>
    * We use the 'lock' recipe from the ZooKeeper documentation to help prevent stampedes:
    * 1. Call create( ) with a pathname of "_locknode_/lock-" and the sequence and ephemeral flags set.
