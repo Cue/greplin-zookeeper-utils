@@ -160,10 +160,14 @@ public class RobustZooKeeper {
     String myNodeFullyQualified = getClient().create(getLockNode(lockName), new byte[0], DEFAULT_ACL,
         CreateMode.EPHEMERAL_SEQUENTIAL);
 
-    lockRecipeStepTwo(myNodeFullyQualified, lockName, action);
+    final String[] nodePathname = myNodeFullyQualified.split("/");
+    final String relativePath = nodePathname[nodePathname.length - 1];
+
+    lockRecipeStepTwo(myNodeFullyQualified, relativePath, lockName, action);
   }
 
-  private void lockRecipeStepTwo(final String myNodeFullyQualified, final String lockName, final Runnable action)
+  private void lockRecipeStepTwo(final String fullPath, final String relativePath,
+                                 final String lockName, final Runnable action)
       throws IOException, InterruptedException, KeeperException {
     // step 2
     final List<String> children = getClient().getChildren(getLockParent(lockName), false);
@@ -171,28 +175,29 @@ public class RobustZooKeeper {
     Collections.sort(children);
 
     // step 3
-    if (myNodeFullyQualified.endsWith(children.get(0))) {
+    if (relativePath.equals(children.get(0))) {
       try {
         action.run();
       } finally {
         try {
-          getClient().delete(myNodeFullyQualified, -1);
+          getClient().delete(fullPath, -1);
         } catch (KeeperException.NoNodeException e) {
           log.warn("After I finished running an action with lock " + lockName + " the actions lock node ("
-              + myNodeFullyQualified + ") no longer exists. This should only happen if you manually deleted "
-              + myNodeFullyQualified + " or there was an underlying network failure, and we had to reconnect");
+              + fullPath + ") no longer exists. This should only happen if you manually deleted "
+              + fullPath + " or there was an underlying network failure, and we had to reconnect");
         }
       }
       return;
     }
 
     // step 4
-    final String nodeBeforeMine = children.get(children.indexOf(myNodeFullyQualified) - 1);
-    Stat exists = getClient().exists(nodeBeforeMine, new Watcher() {
+    int indexOfNodeBefore = children.indexOf(relativePath) - 1;
+    final String nodeBeforeMine = children.get(indexOfNodeBefore);
+    Stat exists = getClient().exists(getLockParent(lockName) + "/" + nodeBeforeMine, new Watcher() {
       @Override
       public void process(WatchedEvent event) {
         try {
-          lockRecipeStepTwo(myNodeFullyQualified, lockName, action);
+          lockRecipeStepTwo(fullPath, relativePath, lockName, action);
         } catch (Exception e) {
           log.error("Unable to execute action with lock " + lockName, e);
         }
@@ -201,7 +206,7 @@ public class RobustZooKeeper {
 
     // step 5
     if (exists == null) {
-      lockRecipeStepTwo(myNodeFullyQualified, lockName, action);
+      lockRecipeStepTwo(fullPath, relativePath, lockName, action);
     }
   }
 }
