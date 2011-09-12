@@ -199,7 +199,7 @@ public class RobustZooKeeper {
         try {
           lockRecipeStepTwo(fullPath, relativePath, lockName, action);
         } catch (Exception e) {
-          log.error("Unable to execute action with lock " + lockName, e);
+          log.warn("Unable to execute action with lock " + lockName, e);
         }
       }
     });
