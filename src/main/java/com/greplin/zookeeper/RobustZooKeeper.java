@@ -78,6 +78,7 @@ public class RobustZooKeeper {
   /**
    * Get the number of times the underlying zookeeper connection has had to be reconnected.
    * Useful for monitoring/etc
+   *
    * @return The number of reconnections that have successfully completed.
    */
   public int getReconnectionCount() {
@@ -151,13 +152,19 @@ public class RobustZooKeeper {
   public void withLock(final String lockName, final Runnable action)
       throws IOException, InterruptedException, KeeperException {
     Preconditions.checkArgument(!lockName.contains("/"));
+    withLock(lockName, new byte[0], action);
+  }
+
+  public void withLock(final String lockName, byte[] lockData, final Runnable action)
+      throws IOException, InterruptedException, KeeperException {
+    Preconditions.checkArgument(!lockName.contains("/"));
     try {
       getClient().create(getLockParent(lockName), new byte[0], DEFAULT_ACL, CreateMode.PERSISTENT);
     } catch (KeeperException.NodeExistsException e) {
       // ignore - the prior 'create' is only needed for the first locker
     }
 
-    String myNodeFullyQualified = getClient().create(getLockNode(lockName), new byte[0], DEFAULT_ACL,
+    final String myNodeFullyQualified = getClient().create(getLockNode(lockName), lockData, DEFAULT_ACL,
         CreateMode.EPHEMERAL_SEQUENTIAL);
 
     final String[] nodePathname = myNodeFullyQualified.split("/");
@@ -166,12 +173,13 @@ public class RobustZooKeeper {
     lockRecipeStepTwo(myNodeFullyQualified, relativePath, lockName, action);
   }
 
+
   private void lockRecipeStepTwo(final String fullPath, final String relativePath,
                                  final String lockName, final Runnable action)
       throws IOException, InterruptedException, KeeperException {
     // step 2
     final List<String> children = getClient().getChildren(getLockParent(lockName), false);
-    assert children.size() > 0;
+    assert children.size() > 0; // at the ver least, my node should be there.
     Collections.sort(children);
 
     // step 3
@@ -191,9 +199,10 @@ public class RobustZooKeeper {
     }
 
     // step 4
-    int indexOfNodeBefore = children.indexOf(relativePath) - 1;
+    final int indexOfNodeBefore = children.indexOf(relativePath) - 1;
+    assert indexOfNodeBefore > 0 : "indexOfNodeBefore is " + indexOfNodeBefore + ", and children are: " + children;
     final String nodeBeforeMine = children.get(indexOfNodeBefore);
-    Stat exists = getClient().exists(getLockParent(lockName) + "/" + nodeBeforeMine, new Watcher() {
+    final Stat exists = getClient().exists(getLockParent(lockName) + "/" + nodeBeforeMine, new Watcher() {
       @Override
       public void process(WatchedEvent event) {
         try {
