@@ -20,7 +20,9 @@ Some improvements we'd love to see include:
 
 * [Read/write locks] (http://zookeeper.apache.org/doc/trunk/recipes.html#Shared+Locks)
 
-* [Leader Elections] (http://zookeeper.apache.org/doc/trunk/recipes.html#sc_leaderElection)
+* [Double Barriers] (http://zookeeper.apache.org/doc/trunk/recipes.html#sc_doubleBarriers)
+
+* [Two-phased Commit] (http://zookeeper.apache.org/doc/trunk/recipes.html#sc_recipes_twoPhasedCommit)
 
 ### Pre-requisites:
 
