@@ -1,6 +1,7 @@
 /*
  * Copyright 2010 The Greplin Zookeeper Utility Authors.
  *
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -20,7 +21,7 @@ import com.google.common.base.Preconditions;
 import com.google.common.io.Files;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.apache.zookeeper.server.NIOServerCnxn;
+import org.apache.zookeeper.server.NIOServerCnxnFactory;
 import org.apache.zookeeper.server.ServerConfig;
 import org.apache.zookeeper.server.ZooKeeperServer;
 import org.apache.zookeeper.server.persistence.FileTxnSnapLog;
@@ -45,9 +46,16 @@ public class EmbeddedZookeeperServer {
 
 
   private final Thread serverThread;
-  private final NIOServerCnxn.Factory connectionFactory;
+  private final NIOServerCnxnFactory connectionFactory;
   private final ZooKeeperServer zooKeeperServer;
 
+  /**
+   * Creates a new embeddable ZookeeperServer.
+   *
+   * @param clientPort The port for the server to listen for client connections one
+   * @param dataDir    The directory for zookeeper to store memory snapshots and transaction logs
+   * @param tickTime   Server ticktime, used for heartbeats and determining session timeouts
+   */
   public EmbeddedZookeeperServer(Integer clientPort, File dataDir, Long tickTime) throws
       QuorumPeerConfig.ConfigException, IOException {
     Preconditions.checkNotNull(dataDir);
@@ -81,58 +89,82 @@ public class EmbeddedZookeeperServer {
 
     log.info("Starting embedded zookeeper server on port " + clientPort);
     this.zooKeeperServer = new ZooKeeperServer();
-    this.zooKeeperServer.setTxnLogFactory(new FileTxnSnapLog(new File(config.getDataLogDir()),
-        new File(config.getDataDir())));
-    this.zooKeeperServer.setTickTime(config.getTickTime());
-    this.zooKeeperServer.setMinSessionTimeout(config.getMinSessionTimeout());
-    this.zooKeeperServer.setMaxSessionTimeout(config.getMaxSessionTimeout());
+    configure(this.zooKeeperServer, config);
 
-    this.connectionFactory = new NIOServerCnxn.Factory(config.getClientPortAddress(), config.getMaxClientCnxns());
+    this.connectionFactory = new NIOServerCnxnFactory();
+    this.connectionFactory.configure(config.getClientPortAddress(), config.getMaxClientCnxns());
     try {
-      connectionFactory.startup(zooKeeperServer);
+      this.connectionFactory.startup(this.zooKeeperServer);
     } catch (InterruptedException e) {
       throw new RuntimeException("Server Interrupted", e);
     }
 
-    serverThread = new Thread(new Runnable() {
+    this.serverThread = new Thread(new Runnable() {
       @Override
       public void run() {
         try {
-          connectionFactory.join();
+          EmbeddedZookeeperServer.this.connectionFactory.join();
         } catch (InterruptedException e) {
           log.error("Zookeeper Connection Factory Interrupted", e);
         }
       }
     });
 
-    serverThread.start();
+    this.serverThread.start();
   }
 
+  private void configure(ZooKeeperServer zooKeeperServer, ServerConfig config) throws IOException {
+    zooKeeperServer.setTxnLogFactory(
+        new FileTxnSnapLog(new File(config.getDataLogDir()), new File(config.getDataDir())));
+    zooKeeperServer.setTickTime(config.getTickTime());
+    zooKeeperServer.setMinSessionTimeout(config.getMinSessionTimeout());
+    zooKeeperServer.setMaxSessionTimeout(config.getMaxSessionTimeout());
+  }
+
+  /**
+   * Shuts down this server instance.
+   */
   public void shutdown() throws InterruptedException {
-    boolean alreadyShutdown = shutdown.getAndSet(true);
+    boolean alreadyShutdown = this.shutdown.getAndSet(true);
 
     if (alreadyShutdown) {
       return;
     } else {
-      connectionFactory.shutdown();
+      this.connectionFactory.shutdown();
 
       // block until the server is actually shutdown
-      serverThread.join();
+      this.serverThread.join();
     }
   }
 
+  /**
+   * Returns the port this server is listening on.
+   * @return The port thi server is listening on
+   */
   public int getClientPort() {
-    return clientPort;
+    return this.clientPort;
   }
 
+  /**
+   * Returns this server's configured data directory.
+   * @return The directory this server is storing snapshots and transaction logs in
+   */
   public File getDataDir() {
-    return dataDir;
+    return this.dataDir;
   }
 
+  /**
+   * This server's configured ticktime.
+   * @return This server's configured ticktime
+   */
   public long getTickTime() {
-    return tickTime;
+    return this.tickTime;
   }
 
+  /**
+   * Returns a new EmbeddedZookeeperServer Builder.
+   * @return A new server builder
+   */
   public static Builder builder() {
     return new Builder();
   }
@@ -147,27 +179,42 @@ public class EmbeddedZookeeperServer {
     private File dataDir = Files.createTempDir();
     private long tickTime = 2000;
 
+    /**
+     * Constructs a new default builder.
+     */
     public Builder() {
       // no required parameters - my defaults work pretty well.
     }
 
+    /**
+     * Sets the port for an EmbeddedZookeeperServer to listen on.
+     */
     public Builder clientPort(int port) {
       this.clientPort = port;
       return this;
     }
 
+    /**
+     * Sets the data directory for an EmbeddedZookeeperServer to store files.
+     */
     public Builder dataDir(File dataDir) {
       this.dataDir = dataDir;
       return this;
     }
 
+    /**
+     * Sets the ticktime for an EmbeddedZookeeperServer.
+     */
     public Builder tickTime(Long tickTime) {
       this.tickTime = tickTime;
       return this;
     }
 
+    /**
+     * Builds and returns a new EmbeddedZookeeperServer based on this Builder's configuration.
+     */
     public EmbeddedZookeeperServer build() throws IOException, QuorumPeerConfig.ConfigException {
-      return new EmbeddedZookeeperServer(clientPort, dataDir, tickTime);
+      return new EmbeddedZookeeperServer(this.clientPort, this.dataDir, this.tickTime);
     }
   }
 }
