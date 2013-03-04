@@ -19,6 +19,7 @@ package com.greplin.zookeeper;
 
 import com.google.common.base.Preconditions;
 import com.google.common.io.Files;
+import org.apache.commons.io.FileUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.zookeeper.server.NIOServerCnxnFactory;
@@ -42,12 +43,13 @@ public class EmbeddedZookeeperServer {
   private final AtomicBoolean shutdown;
   private final int clientPort;
   private final File dataDir;
+  private final boolean isTemporary;
   private final long tickTime;
 
 
   private final Thread serverThread;
   private final NIOServerCnxnFactory connectionFactory;
-  private final ZooKeeperServer zooKeeperServer;
+
 
   /**
    * Creates a new embeddable ZookeeperServer.
@@ -58,23 +60,27 @@ public class EmbeddedZookeeperServer {
    */
   public EmbeddedZookeeperServer(Integer clientPort, File dataDir, Long tickTime) throws
       QuorumPeerConfig.ConfigException, IOException {
-    Preconditions.checkNotNull(dataDir);
     Preconditions.checkNotNull(clientPort);
     Preconditions.checkNotNull(tickTime);
 
-    Preconditions.checkArgument(clientPort > 0);
-    Preconditions.checkArgument(clientPort < 65536);
+    Preconditions.checkArgument(clientPort > 0 && clientPort < 65536);
     Preconditions.checkArgument(tickTime > 0);
 
     this.shutdown = new AtomicBoolean(false);
     this.clientPort = clientPort;
-    this.dataDir = dataDir;
+    this.isTemporary = dataDir == null;
+    if (this.isTemporary) {
+      this.dataDir = Files.createTempDir();
+    } else {
+      this.dataDir = dataDir;
+    }
+
     this.tickTime = tickTime;
 
     Properties properties = new Properties();
     properties.setProperty("tickTime", tickTime.toString());
     properties.setProperty("clientPort", clientPort.toString());
-    properties.setProperty("dataDir", dataDir.getAbsolutePath());
+    properties.setProperty("dataDir", this.dataDir.getAbsolutePath());
 
     QuorumPeerConfig qpc = new QuorumPeerConfig();
     try {
@@ -88,13 +94,13 @@ public class EmbeddedZookeeperServer {
     config.readFrom(qpc);
 
     log.info("Starting embedded zookeeper server on port " + clientPort);
-    this.zooKeeperServer = new ZooKeeperServer();
-    configure(this.zooKeeperServer, config);
+    ZooKeeperServer zooKeeperServer = new ZooKeeperServer();
+    configure(zooKeeperServer, config);
 
     this.connectionFactory = new NIOServerCnxnFactory();
     this.connectionFactory.configure(config.getClientPortAddress(), config.getMaxClientCnxns());
     try {
-      this.connectionFactory.startup(this.zooKeeperServer);
+      this.connectionFactory.startup(zooKeeperServer);
     } catch (InterruptedException e) {
       throw new RuntimeException("Server Interrupted", e);
     }
@@ -127,13 +133,19 @@ public class EmbeddedZookeeperServer {
   public void shutdown() throws InterruptedException {
     boolean alreadyShutdown = this.shutdown.getAndSet(true);
 
-    if (alreadyShutdown) {
-      return;
-    } else {
+    if (!alreadyShutdown) {
       this.connectionFactory.shutdown();
 
       // block until the server is actually shutdown
       this.serverThread.join();
+
+      if (this.isTemporary) {
+        try {
+          FileUtils.deleteDirectory(this.dataDir);
+        } catch (IOException e) {
+          throw new RuntimeException(e);
+        }
+      }
     }
   }
 
@@ -174,10 +186,9 @@ public class EmbeddedZookeeperServer {
    */
   public static class Builder {
 
-    // some reasonable defaults
-    private int clientPort = 2181;
-    private File dataDir = Files.createTempDir();
-    private long tickTime = 2000;
+    private int clientPort = 2181; // MUTABLE: Builder.
+    private File dataDir = null; // MUTABLE: Builder.
+    private long tickTime = 2000; // MUTABLE: Builder.
 
     /**
      * Constructs a new default builder.
