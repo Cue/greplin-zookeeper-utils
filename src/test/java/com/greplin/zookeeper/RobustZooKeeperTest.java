@@ -44,14 +44,14 @@ public class RobustZooKeeperTest {
 
   @Before
   public void setup() throws QuorumPeerConfig.ConfigException, IOException {
-    zookeeperServer = EmbeddedZookeeperServer.builder().clientPort(ZK_PORT).build();
-    rbz = new RobustZooKeeper("localhost:" + ZK_PORT);
+    this.zookeeperServer = EmbeddedZookeeperServer.builder().clientPort(ZK_PORT).build();
+    this.rbz = new RobustZooKeeper("localhost:" + ZK_PORT);
   }
 
   @After
   public void tearDown() throws InterruptedException {
-    zookeeperServer.shutdown();
-    rbz.shutdown();
+    this.zookeeperServer.shutdown();
+    this.rbz.shutdown();
   }
 
   private void checkNoRemainingLocks(String lockName) throws IOException, InterruptedException, KeeperException {
@@ -69,7 +69,7 @@ public class RobustZooKeeperTest {
   public void testLockBasic() throws IOException, InterruptedException, KeeperException {
     final AtomicInteger lockCounter = new AtomicInteger(0);
 
-    rbz.withLock("testLock", new Runnable() {
+    this.rbz.withLock("testLock", new Runnable() {
       @Override
       public void run() {
         lockCounter.incrementAndGet();
@@ -89,7 +89,7 @@ public class RobustZooKeeperTest {
     final AtomicInteger currentWithLockRuns = new AtomicInteger(0);
 
     for (int i = 0; i < 10; i++) {
-      rbz.withLock("testLock", new Runnable() {
+      this.rbz.withLock("testLock", new Runnable() {
         @Override
         public void run() {
           withLockRuns.incrementAndGet();

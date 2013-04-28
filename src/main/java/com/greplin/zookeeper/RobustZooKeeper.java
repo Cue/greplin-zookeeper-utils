@@ -47,7 +47,7 @@ import java.util.concurrent.locks.ReentrantLock;
 public class RobustZooKeeper {
 
   private static final AtomicInteger INSTANCE_COUNTER = new AtomicInteger(0); // help make log msgs clearer
-  
+
   private static final Log log = LogFactory.getLog(RobustZooKeeper.class);
 
   protected static final String LOCK_NODE_PREFIX = "/_greplin_robustZK_"; // prefixes all node names
@@ -74,7 +74,7 @@ public class RobustZooKeeper {
     this.reconnectLock = new ReentrantLock();
     this.ensembleAddress = ensembleAddresses;
     this.client = null;
-    clientNumber = INSTANCE_COUNTER.incrementAndGet();
+    this.clientNumber = INSTANCE_COUNTER.incrementAndGet();
   }
 
   private static boolean isAlive(ZooKeeper zk) {
@@ -88,7 +88,7 @@ public class RobustZooKeeper {
    * @return The number of reconnections that have successfully completed.
    */
   public int getReconnectionCount() {
-    return reconnectCount.get();
+    return this.reconnectCount.get();
   }
 
   public void shutdown() throws InterruptedException {
@@ -104,8 +104,7 @@ public class RobustZooKeeper {
 
   // blocking zookeeper 'sync' on /
   public void sync() throws IOException, InterruptedException {
-
-    log.info("Called sync() on client " + clientNumber);
+    log.info("Called sync() on client " + this.clientNumber);
     final CountDownLatch waitForSync = new CountDownLatch(1);
     final ZooKeeper c = getClient();
     assert c.getState().isAlive();
@@ -113,34 +112,33 @@ public class RobustZooKeeper {
     c.sync("/", new AsyncCallback.VoidCallback() {
       @Override
       public void processResult(int rc, String path, Object ctx) {
-        log.info("Sync callback triggered on client " + clientNumber);
+        log.info("Sync callback triggered on client " + RobustZooKeeper.this.clientNumber);
         waitForSync.countDown();
       }
     }, null);
 
-    log.info("Waitng for sync callback on client " + clientNumber);
+    log.info("Waitng for sync callback on client " + this.clientNumber);
     waitForSync.await();
 
-    log.info("sync() finished on " + clientNumber);
-    return;
+    log.info("sync() finished on " + this.clientNumber);
   }
 
   // returns an 'alive' client - with no lock in the common case
   public ZooKeeper getClient() throws IOException {
-    Preconditions.checkState(!shutdown.get());
-    ZooKeeper res = client;
+    Preconditions.checkState(!this.shutdown.get());
+    ZooKeeper res = this.client;
 
     if (!isAlive(res)) {
-      reconnectLock.lock();
+      this.reconnectLock.lock();
       try {
-        res = client;
+        res = this.client;
         if (!isAlive(res)) {
-          res = new ZooKeeper(ensembleAddress, Integer.MAX_VALUE, new ConnectionWatcher());
-          reconnectCount.incrementAndGet();
-          client = res;
+          res = new ZooKeeper(this.ensembleAddress, Integer.MAX_VALUE, new ConnectionWatcher());
+          this.reconnectCount.incrementAndGet();
+          this.client = res;
         }
       } finally {
-        reconnectLock.unlock();
+        this.reconnectLock.unlock();
       }
     }
 
@@ -195,7 +193,7 @@ public class RobustZooKeeper {
 
     final String myNodeFullyQualified = getClient().create(getLockNode(lockName), lockData, DEFAULT_ACL,
         CreateMode.EPHEMERAL_SEQUENTIAL);
-    log.info("Client " + clientNumber +" attempts to get the '"  + lockName + "'" + " lock: " + myNodeFullyQualified);
+    log.info("Client " + this.clientNumber +" attempts to get the '"  + lockName + "'" + " lock: " + myNodeFullyQualified);
 
     final String[] nodePathname = myNodeFullyQualified.split("/");
     final String relativePath = nodePathname[nodePathname.length - 1];
@@ -208,12 +206,12 @@ public class RobustZooKeeper {
                                  final String lockName, final Runnable action)
       throws IOException, InterruptedException, KeeperException {
 
-    log.info("Client " + clientNumber + " at start of lockRecipeStepTwo with relativePath = " + relativePath);
-    if (shutdown.get()) {
-      log.warn("Client " + clientNumber + " is shutdown - so I'm going to give up my attempt to lock");
+    log.info("Client " + this.clientNumber + " at start of lockRecipeStepTwo with relativePath = " + relativePath);
+    if (this.shutdown.get()) {
+      log.warn("Client " + this.clientNumber + " is shutdown - so I'm going to give up my attempt to lock");
       return;
     }
-    
+
     // step 2
     final List<String> children = getClient().getChildren(getLockParent(lockName), false);
     assert children.size() > 0; // at the ver least, my node should be there.
@@ -221,12 +219,12 @@ public class RobustZooKeeper {
 
     // step 3
     if (relativePath.equals(children.get(0))) {
-      log.info("Client " + clientNumber + " has the lowest number lock attempt ("
+      log.info("Client " + this.clientNumber + " has the lowest number lock attempt ("
           + relativePath + "), so it holds the lock");
       try {
         action.run();
       } finally {
-        log.info("Client " + clientNumber + " finished doing my work with "
+        log.info("Client " + this.clientNumber + " finished doing my work with "
             + relativePath + ", so I'm giving up the lock.");
         try {
           getClient().delete(fullPath, -1);
@@ -246,13 +244,13 @@ public class RobustZooKeeper {
     }
 
     final String nodeBeforeMine = children.get(indexOfNodeBefore);
-    log.info("Client " + clientNumber + "  (at " + relativePath + ") is setting a watch on the node before me ("
+    log.info("Client " + this.clientNumber + "  (at " + relativePath + ") is setting a watch on the node before me ("
         + nodeBeforeMine + ")");
     final Stat exists = getClient().exists(getLockParent(lockName) + "/" + nodeBeforeMine, new Watcher() {
       @Override
       public void process(WatchedEvent event) {
         try {
-          log.info("Client " + clientNumber + ", when watching " + nodeBeforeMine + ", got notified: " + event);
+          log.info("Client " + RobustZooKeeper.this.clientNumber + ", when watching " + nodeBeforeMine + ", got notified: " + event);
           lockRecipeStepTwo(fullPath, relativePath, lockName, action);
         } catch (Exception e) {
           log.warn("Unable to execute action with lock " + lockName, e);
@@ -262,13 +260,13 @@ public class RobustZooKeeper {
 
     // step 5
     if (exists == null) {
-      log.info("Client " + clientNumber + " expected " + nodeBeforeMine
+      log.info("Client " + this.clientNumber + " expected " + nodeBeforeMine
           + " to exist - but it doesn't so re-running step 2");
       lockRecipeStepTwo(fullPath, relativePath, lockName, action);
     }
   }
 
   public int getInstanceNumber() {
-    return clientNumber;
+    return this.clientNumber;
   }
 }
