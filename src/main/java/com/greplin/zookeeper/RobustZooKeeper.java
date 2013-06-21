@@ -17,8 +17,6 @@
 package com.greplin.zookeeper;
 
 import com.google.common.base.Preconditions;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.zookeeper.AsyncCallback;
 import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.KeeperException;
@@ -37,6 +35,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 
 /**
  * The org.apache.zookeeper.ZooKeeper client won't automatically reconnect, and is a bit low-level for many uses
@@ -48,7 +49,7 @@ public class RobustZooKeeper {
 
   private static final AtomicInteger INSTANCE_COUNTER = new AtomicInteger(0); // help make log msgs clearer
 
-  private static final Log log = LogFactory.getLog(RobustZooKeeper.class);
+  private static final Logger log = LoggerFactory.getLogger(RobustZooKeeper.class);
 
   protected static final String LOCK_NODE_PREFIX = "/_greplin_robustZK_"; // prefixes all node names
   protected static final String LOCK_NAME = "lock-";

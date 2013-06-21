@@ -20,8 +20,6 @@ package com.greplin.zookeeper;
 import com.google.common.base.Preconditions;
 import com.google.common.io.Files;
 import org.apache.commons.io.FileUtils;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.zookeeper.server.NIOServerCnxnFactory;
 import org.apache.zookeeper.server.ServerConfig;
 import org.apache.zookeeper.server.ZooKeeperServer;
@@ -32,13 +30,15 @@ import java.io.File;
 import java.io.IOException;
 import java.util.Properties;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Make it easy to run a real zookeeper server (in a 1-node quorom) in the current JVM. Useful for testing.
  */
 public class EmbeddedZookeeperServer {
 
-  private static final Log log = LogFactory.getLog(EmbeddedZookeeperServer.class);
+  private static final Logger log = LoggerFactory.getLogger(EmbeddedZookeeperServer.class);
 
   private final AtomicBoolean shutdown;
   private final int clientPort;
